@@ -1,0 +1,29 @@
+{
+    "key": "value",
+    "key1": "value1",
+    "bool": true,
+    "nil": null,
+    "number": 11111,
+    "obj": {
+        "k1": "v1",
+        "k2": "v2",
+        "objk3": {
+            "k4": "v4",
+            "k5": "v5"
+        }
+    },
+    "array": [
+        {
+            "obj1": "test"
+        },
+        {
+            "obj3": "test3"
+        },
+        {
+            "obj4": "test4"
+        },
+        {
+            "obj2": "test2"
+        }
+    ]
+}
