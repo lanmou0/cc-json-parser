@@ -4,27 +4,16 @@ import (
 	"errors"
 	"fmt"
 	"os"
-	"strings"
 	"unicode"
-	"unicode/utf8"
 )
 
-var curlyCount = 0
-var bracCount = 0
 var hasError = false
 var errorMsg = ""
 var line = 0
 var offset = 0
-var runeBuf []rune
-var breakScan = false
-
-type JsonValue any
-type JsonString string
-type JsonArray []JsonValue
-type Store map[JsonString]JsonValue
 
 func parseJsonArray(scanner *BufferedScanner) JsonArray {
-	array := make([]JsonValue, 0)
+	array := make(JsonArray, 0)
 
 	for {
 		ch, done := scanner.Scan()
@@ -37,8 +26,6 @@ func parseJsonArray(scanner *BufferedScanner) JsonArray {
 		}
 
 		if R_BRAC == ch {
-			bracCount -= 1
-			breakScan = true
 			break
 		}
 
@@ -54,154 +41,122 @@ func parseJsonArray(scanner *BufferedScanner) JsonArray {
 	return JsonArray(array)
 }
 
+func parseJsonPrimitive(scanner *BufferedScanner, primitive string) JsonValue {
+	ch := scanner.PeekUntil(getStrLast(primitive))
+	if string(ch.Get()) != primitive {
+		hasError = true
+		errorMsg = "Unrecognized Symbol"
+	}
+
+	return JsonValue(string(ch.Get()))
+}
+
+func parseJsonNumber(scanner *BufferedScanner) JsonValue {
+	buf := scanner.PeekUntilExclude(COMMA)
+
+	num := string(buf.Get())
+	if !isStrNumber(num) {
+		//FIXME add a error struct and methods
+		hasError = true
+		errorMsg = "Unrecognized symbol"
+	}
+	return string(num)
+}
+
 func parseJsonValue(scanner *BufferedScanner) JsonValue {
-	var vbuilder strings.Builder
-	internal_store := make(Store)
-	var array []Store
-	qcount := 0
-	for scanner.Scan() {
+	for {
+		ch, done := scanner.Scan()
+		if done {
+			break
+		}
 		offset += 1
-		text, _ := utf8.DecodeRune(scanner.Bytes())
-		Logger.Debug(fmt.Sprintf("kvscan %#U\n", text))
-		if unicode.IsSpace(text) {
+		Logger.Debug(fmt.Sprintf("kvscan %#U\n", ch))
+		if unicode.IsSpace(ch) {
 			continue
 		}
-		if COMMA == text {
+		if COMMA == ch {
 			break
 		}
-		if QUOTE == text {
-			qcount += 1
+		if QUOTE == ch {
+			scanner.buffer.Push(ch)
+			return parseJsonString(scanner)
 		}
-		if L_CURLY == text {
-			runeBuf = text
-			scan(scanner, internal_store)
+		if L_CURLY == ch {
+			scanner.buffer.Push(ch)
+			return parseJsonObject(scanner)
 		}
-		if L_BRAC == text {
-			bracCount += 1
-			array = parseArray(scanner)
+		if L_BRAC == ch {
+			scanner.buffer.Push(ch)
+			return parseJsonArray(scanner)
 		}
-		if R_CURLY == text {
-			breakScan = true
-			curlyCount -= 1
-			break
+		if 't' == ch {
+			scanner.buffer.Push(ch)
+			return parseJsonPrimitive(scanner, PRIM_TRUE)
 		}
-		vbuilder.WriteRune(text)
+		if 'f' == ch {
+			scanner.buffer.Push(ch)
+			return parseJsonPrimitive(scanner, PRIM_FALSE)
+		}
+		if 'n' == ch {
+			scanner.buffer.Push(ch)
+			return parseJsonPrimitive(scanner, PRIM_NULL)
+		}
+		if unicode.IsDigit(ch) {
+			scanner.buffer.Push(ch)
+			return parseJsonNumber(scanner)
+		}
 	}
-
-	value := vbuilder.String()
-	if len(internal_store) != 0 {
-		return internal_store
-	}
-	if len(array) != 0 {
-		return array
-	}
-	if qcount == 0 {
-		isPrim := PRIM_NULL == value || PRIM_FALSE == value || PRIM_TRUE == value
-		isNum := isNumber(value)
-
-		if !isPrim && !isNum {
-			hasError = true
-			errorMsg = fmt.Sprintf("%d:%d|unrecognized value", line, offset)
-			return nil
-		}
-	} else if qcount != 2 {
-		hasError = true
-		errorMsg = fmt.Sprintf("%d:%d|mistmatched quotes", line, offset)
-		return nil
-	}
-	return value
+	//FIXME what to return?
+	return nil
 }
 
 func parseJsonString(scanner *BufferedScanner) JsonString {
-	var kbuilder strings.Builder
-	qfound := false
-	for scanner.Scan() {
-		offset += 1
-		text, _ := utf8.DecodeRune(scanner.Bytes())
-		Logger.Debug(fmt.Sprintf("kvscan %#U\n", text))
-		if QUOTE == text {
-			qfound = true
-			continue
-		}
-		if COLON == text {
-			if !qfound {
-				hasError = true
-				errorMsg = fmt.Sprintf("%d:%d|Missing colon", line, offset)
-				return ""
-			}
-			break
-		}
+	b := scanner.PeekUntil(QUOTE)
+	scanner.buffer.PopAll()
 
-		if COMMA == text {
-			hasError = true
-			errorMsg = fmt.Sprintf("%d:%d|Missing comma", line, offset)
-			return ""
-		}
-
-		if R_CURLY == text {
-			hasError = true
-			errorMsg = fmt.Sprintf("%d:%d|Missmatched curly brace", line, offset)
-			return ""
-		}
-		kbuilder.WriteRune(text)
-	}
-	key := kbuilder.String()
-
-	return JsonString(key)
+	return JsonString(string(b.Get()))
 }
 
-func tokenize(ch rune, scanner *BufferedScanner, store Store) {
-	if unicode.IsSpace(ch) {
-		if ch == '\n' {
-			offset = 0
-			line += 1
-		}
-		return
-	}
-	switch ch {
-	case L_CURLY:
-		curlyCount += 1
-	case R_CURLY:
-		breakScan = true
-		curlyCount -= 1
-	case QUOTE:
-		key := parseJsonString(scanner)
-		value := parseJsonValue(scanner)
-		if key == "" && value == nil {
-			break
-		}
-		store[key] = value
-	}
-}
-
-func parseJsonObject(scanner *BufferedScanner, store Store) {
+func parseJsonObject(scanner *BufferedScanner) JsonObject {
 	if hasError {
 		exitOnError(errors.New("malformed Json file"), "malformed Json file")
 	}
-	Logger.Debug(fmt.Sprintf("tscan %#U\n", ch))
-	tokenize(ch, scanner, store)
-	if breakScan {
-		breakScan = false
-		break
+	store := make(JsonObject)
+	for {
+		ch, done := scanner.Scan()
+		if done {
+			break
+		}
+		Logger.Debug(fmt.Sprintf("tscan %#U\n", ch))
+		if unicode.IsSpace(ch) {
+			if ch == '\n' {
+				offset = 0
+				line += 1
+			}
+			continue
+		}
+		switch ch {
+		case QUOTE:
+			key := parseJsonString(scanner)
+			value := parseJsonValue(scanner)
+			if key == "" && value == nil {
+				break
+			}
+			store[key] = value
+		}
 	}
+
+	return store
 }
 
-func ParseJson(file *os.File) {
+func ParseJson(file *os.File) (JsonValue, error) {
 	scanner := NewBufferedScanner(file)
-	var store = make(Store)
-	rb := scanner.Peek(1)
-	ch := rb.buffer[0]
-	switch ch {
+	ch := scanner.PeekOne()
+	switch ch.Get()[0] {
 	case L_BRAC:
-		parseJsonArray(scanner)
+		return parseJsonArray(scanner), nil
 	case L_CURLY:
-		parseJsonObject(scanner, store)
+		return parseJsonObject(scanner), nil
 	}
-
-	Logger.Info(fmt.Sprintf("store %v\n", store))
-	Logger.Debug(fmt.Sprintf("errors %d, %d\n", bracCount, curlyCount))
-
-	if bracCount+curlyCount != 0 {
-		exitOnError(errors.New("malformed Json file"), "malformed Json file")
-	}
+	return nil, nil
 }

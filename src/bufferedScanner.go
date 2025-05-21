@@ -30,6 +30,11 @@ func (bs *BufferedScanner) Scan() (rune, bool) {
 	return ch, done
 }
 
+func (bs *BufferedScanner) PeekOne() *RuneBuffer {
+
+	return bs.Peek(1)
+}
+
 func (bs *BufferedScanner) Peek(n int) *RuneBuffer {
 	if bs.hasPeek {
 		return &bs.buffer
@@ -51,10 +56,28 @@ func (bs *BufferedScanner) PeekUntil(r rune) *RuneBuffer {
 	for bs.scanner.Scan() {
 		ch, _ := utf8.DecodeRune(bs.scanner.Bytes())
 		bs.buffer.Push(ch)
-		if r == QUOTE {
+		if ch == r {
 			break
 		}
 	}
+	//FIXME error if not found
+	bs.hasPeek = true
+
+	return &bs.buffer
+}
+
+func (bs *BufferedScanner) PeekUntilExclude(r rune) *RuneBuffer {
+	if bs.hasPeek {
+		return &bs.buffer
+	}
+	for bs.scanner.Scan() {
+		ch, _ := utf8.DecodeRune(bs.scanner.Bytes())
+		if ch == r {
+			break
+		}
+		bs.buffer.Push(ch)
+	}
+	//FIXME error if not found
 	bs.hasPeek = true
 
 	return &bs.buffer

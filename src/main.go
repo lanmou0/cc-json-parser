@@ -20,5 +20,6 @@ func main() {
 	exitOnError(err, fmt.Sprintf("failed to open file: %s", filePath))
 	defer file.Close()
 
-	ParseJson(file)
+	output, err := ParseJson(file)
+	fmt.Printf("output: %v %s", output, err.Error())
 }
