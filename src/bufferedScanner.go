@@ -30,9 +30,9 @@ func (bs *BufferedScanner) Scan() (rune, bool) {
 	return ch, done
 }
 
-func (bs *BufferedScanner) PeekOne() *RuneBuffer {
+func (bs *BufferedScanner) PeekOne() rune {
 
-	return bs.Peek(1)
+	return bs.Peek(1).Get()[0]
 }
 
 func (bs *BufferedScanner) Peek(n int) *RuneBuffer {

@@ -20,6 +20,9 @@ func parseJsonArray(scanner *BufferedScanner) JsonArray {
 		if done {
 			break
 		}
+		if hasError {
+			exitOnError(errors.New("Malformed Json File"), "malformed Json File")
+		}
 		Logger.Debug(fmt.Sprintf("arscan %#U\n", ch))
 		if unicode.IsSpace(ch) {
 			continue
@@ -45,7 +48,7 @@ func parseJsonPrimitive(scanner *BufferedScanner, primitive string) JsonValue {
 	ch := scanner.PeekUntil(getStrLast(primitive))
 	if string(ch.Get()) != primitive {
 		hasError = true
-		errorMsg = "Unrecognized Symbol"
+		errorMsg = "Unrecognized Symbol: " + string(ch.Get())
 	}
 
 	return JsonValue(string(ch.Get()))
@@ -58,7 +61,7 @@ func parseJsonNumber(scanner *BufferedScanner) JsonValue {
 	if !isStrNumber(num) {
 		//FIXME add a error struct and methods
 		hasError = true
-		errorMsg = "Unrecognized symbol"
+		errorMsg = "Unrecognized Symbol: " + num
 	}
 	return string(num)
 }
@@ -68,6 +71,9 @@ func parseJsonValue(scanner *BufferedScanner) JsonValue {
 		ch, done := scanner.Scan()
 		if done {
 			break
+		}
+		if hasError {
+			exitOnError(errors.New("Malformed Json File"), "malformed Json File")
 		}
 		offset += 1
 		Logger.Debug(fmt.Sprintf("kvscan %#U\n", ch))
@@ -106,7 +112,7 @@ func parseJsonValue(scanner *BufferedScanner) JsonValue {
 			return parseJsonNumber(scanner)
 		}
 	}
-	//FIXME what to return?
+	//FIXME return error if we arrive here
 	return nil
 }
 
@@ -118,31 +124,32 @@ func parseJsonString(scanner *BufferedScanner) JsonString {
 }
 
 func parseJsonObject(scanner *BufferedScanner) JsonObject {
-	if hasError {
-		exitOnError(errors.New("malformed Json file"), "malformed Json file")
-	}
 	store := make(JsonObject)
 	for {
 		ch, done := scanner.Scan()
 		if done {
 			break
 		}
+		if hasError {
+			exitOnError(errors.New("Malformed Json File"), "malformed Json File")
+		}
 		Logger.Debug(fmt.Sprintf("tscan %#U\n", ch))
 		if unicode.IsSpace(ch) {
 			if ch == '\n' {
+				//FIXME move to BufferedScanner Interface
 				offset = 0
 				line += 1
 			}
 			continue
 		}
-		switch ch {
-		case QUOTE:
+		if QUOTE == ch {
 			key := parseJsonString(scanner)
 			value := parseJsonValue(scanner)
 			if key == "" && value == nil {
 				break
 			}
 			store[key] = value
+		}
 		}
 	}
 
@@ -152,11 +159,11 @@ func parseJsonObject(scanner *BufferedScanner) JsonObject {
 func ParseJson(file *os.File) (JsonValue, error) {
 	scanner := NewBufferedScanner(file)
 	ch := scanner.PeekOne()
-	switch ch.Get()[0] {
+	switch ch {
 	case L_BRAC:
 		return parseJsonArray(scanner), nil
 	case L_CURLY:
 		return parseJsonObject(scanner), nil
 	}
-	return nil, nil
+	return nil, errors.New("Malformed Json File")
 }
