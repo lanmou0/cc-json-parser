@@ -166,10 +166,11 @@ func parseJsonValue(scanner *BufferedScanner) JsonValue {
 }
 
 func parseJsonKey(scanner *BufferedScanner) JsonString {
-	b := scanner.ScanUntilExclude(COLON)
+	token := scanner.ScanUntilExclude(COLON)
+	token = trimSpace(token)
 	//for formatting purpose
-	key := string(b[1 : len(b)-1])
-	if b[0] != QUOTE && b[len(b)-1] != QUOTE {
+	key := string(token[1 : len(token)-1])
+	if token[0] != QUOTE && token[len(token)-1] != QUOTE {
 		hasError = true
 		errorMsg = "Malformed key" + key
 	}
