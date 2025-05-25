@@ -2,13 +2,15 @@ package main
 
 import (
 	"bufio"
+	"fmt"
 	"os"
+	"slices"
 	"unicode/utf8"
 )
 
 type BufferedScanner struct {
 	scanner *bufio.Scanner
-	buffer  RuneBuffer
+	buffer  rune
 	hasPeek bool
 }
 
@@ -21,64 +23,75 @@ func NewBufferedScanner(file *os.File) *BufferedScanner {
 
 func (bs *BufferedScanner) Scan() (rune, bool) {
 	if bs.hasPeek {
-		r, hp := bs.buffer.Pop()
-		bs.hasPeek = hp
-		return r, false
+		bs.hasPeek = false
+		return bs.buffer, false
 	}
-	done := bs.scanner.Scan()
+	hasToken := bs.scanner.Scan()
+	if bs.scanner.Err() != nil {
+		fmt.Printf("error while scanning err: %s", bs.scanner.Err().Error())
+	}
 	ch, _ := utf8.DecodeRune(bs.scanner.Bytes())
-	return ch, done
+	return ch, !hasToken
 }
 
-func (bs *BufferedScanner) PeekOne() rune {
+func (bs *BufferedScanner) ScanUntil(r rune) []rune {
+	rb := make([]rune, 0)
+	for {
+		ch, done := bs.Scan()
+		if done {
+			break
+		}
 
-	return bs.Peek(1).Get()[0]
-}
-
-func (bs *BufferedScanner) Peek(n int) *RuneBuffer {
-	if bs.hasPeek {
-		return &bs.buffer
-	}
-	for bs.scanner.Scan() && n > 0 {
-		ch, _ := utf8.DecodeRune(bs.scanner.Bytes())
-		bs.buffer.Push(ch)
-		n -= 1
-	}
-	bs.hasPeek = true
-
-	return &bs.buffer
-}
-
-func (bs *BufferedScanner) PeekUntil(r rune) *RuneBuffer {
-	if bs.hasPeek {
-		return &bs.buffer
-	}
-	for bs.scanner.Scan() {
-		ch, _ := utf8.DecodeRune(bs.scanner.Bytes())
-		bs.buffer.Push(ch)
+		rb = append(rb, ch)
 		if ch == r {
 			break
 		}
 	}
-	//FIXME error if not found
-	bs.hasPeek = true
 
-	return &bs.buffer
+	return rb
 }
 
-func (bs *BufferedScanner) PeekUntilExclude(r rune) *RuneBuffer {
-	if bs.hasPeek {
-		return &bs.buffer
-	}
-	for bs.scanner.Scan() {
-		ch, _ := utf8.DecodeRune(bs.scanner.Bytes())
-		if ch == r {
+func (bs *BufferedScanner) ScanUntilExclude(r rune) []rune {
+	rb := make([]rune, 0)
+	for {
+		ch, done := bs.Scan()
+		if done {
 			break
 		}
-		bs.buffer.Push(ch)
+		if ch == r {
+			bs.Buffer(ch)
+			break
+		}
+		rb = append(rb, ch)
 	}
-	//FIXME error if not found
-	bs.hasPeek = true
 
-	return &bs.buffer
+	return rb
+}
+
+func (bs *BufferedScanner) ScanUntilExcludeAll(r ...rune) []rune {
+	rb := make([]rune, 0)
+	for {
+		ch, done := bs.Scan()
+		if done {
+			break
+		}
+		if slices.Contains(r, ch) {
+			bs.Buffer(ch)
+			break
+		}
+		rb = append(rb, ch)
+	}
+
+	return rb
+}
+func (bs *BufferedScanner) Buffer(r rune) {
+	bs.buffer = r
+	bs.hasPeek = true
+}
+
+func (bs *BufferedScanner) Peek() rune {
+	ch, _ := bs.Scan()
+	bs.Buffer(ch)
+
+	return ch
 }

@@ -1,5 +1,7 @@
 package main
 
+import "fmt"
+
 type RuneBuffer struct {
 	buffer []rune
 }
@@ -9,6 +11,9 @@ func (rb RuneBuffer) Get() []rune {
 }
 
 func (rb *RuneBuffer) Push(r rune) {
+	if rb.buffer == nil {
+		rb.buffer = make([]rune, 0)
+	}
 	rb.buffer = append(rb.buffer, r)
 }
 
@@ -21,6 +26,7 @@ func (rb *RuneBuffer) Pop() (rune, bool) {
 	s := make([]rune, len(rb.buffer)-1)
 	s = append(s, rb.buffer[1:]...)
 	rb.buffer = s
+	Logger.Debug(fmt.Sprintf("buffer: %s, %s, %c, %t\n", string(rb.Get()), string(s), r, rb.isEmpty()))
 	return r, true
 }
 

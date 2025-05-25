@@ -1,9 +1,10 @@
 package main
 
 import (
-	"errors"
+	"encoding/json"
+	"fmt"
 	"strconv"
-	"unicode/utf8"
+	"strings"
 )
 
 func exitOnError(err error, msg string) {
@@ -19,12 +20,11 @@ func isStrNumber(text string) bool {
 	return err == nil
 }
 
-func getStrLast(str string) rune {
-	r, _ := utf8.DecodeLastRuneInString(str)
-	// FIXME
-	if r != utf8.RuneError {
-		exitOnError(errors.New("Invalid Rune"), "Invalid symbol")
-	}
+func trimSpace(rs []rune) []rune {
+	return []rune(strings.TrimSpace(string(rs)))
+}
 
-	return r
+func dump(data JsonValue) {
+	b, _ := json.MarshalIndent(data, "", "  ")
+	fmt.Print(string(b))
 }

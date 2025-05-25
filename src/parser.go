@@ -4,6 +4,7 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"slices"
 	"unicode"
 )
 
@@ -11,10 +12,61 @@ var hasError = false
 var errorMsg = ""
 var line = 0
 var offset = 0
+var loop = 0
+
+func logLoop() {
+	loop += 1
+	if loop > 150 {
+		panic("too much looping")
+	}
+}
+
+func parseJsonObject(scanner *BufferedScanner) JsonObject {
+	store := make(JsonObject)
+	logLoop()
+	for {
+		ch, done := scanner.Scan()
+
+		Logger.Debug(fmt.Sprintf("in parse json object loop: %#U, done: %t", ch, done))
+		if done {
+			break
+		}
+		if hasError {
+			exitOnError(errors.New("Malformed Json File"), "malformed Json File")
+		}
+		Logger.Debug(fmt.Sprintf("tscan %#U", ch))
+		if unicode.IsSpace(ch) {
+			if ch == LINE_BREAK {
+				//FIXME move to BufferedScanner Interface
+				offset = 0
+				line += 1
+			}
+			continue
+		}
+		if R_CURLY == ch {
+			return store
+		}
+		if QUOTE == ch {
+			scanner.Buffer(ch)
+			Logger.Debug(fmt.Sprintf("in parse json object quote handler: %#U", ch))
+			key := parseJsonKey(scanner)
+			value := parseJsonValue(scanner)
+			if key == "" && value == nil {
+				break
+			}
+			store[key] = value
+		}
+	}
+	hasError = true
+	errorMsg = "Malformed Object"
+
+	return nil
+}
 
 func parseJsonArray(scanner *BufferedScanner) JsonArray {
 	array := make(JsonArray, 0)
 
+	logLoop()
 	for {
 		ch, done := scanner.Scan()
 		if done {
@@ -23,41 +75,43 @@ func parseJsonArray(scanner *BufferedScanner) JsonArray {
 		if hasError {
 			exitOnError(errors.New("Malformed Json File"), "malformed Json File")
 		}
-		Logger.Debug(fmt.Sprintf("arscan %#U\n", ch))
+		Logger.Debug(fmt.Sprintf("arscan %#U", ch))
 		if unicode.IsSpace(ch) {
 			continue
 		}
-
 		if R_BRAC == ch {
-			break
-		}
-
-		if COMMA == ch {
-			continue
+			return JsonArray(array)
 		}
 
 		value := parseJsonValue(scanner)
 		array = append(array, value)
-		Logger.Debug(fmt.Sprintf("arscan %v\n", array))
+		Logger.Debug(fmt.Sprintf("array %v", value))
+		Logger.Debug(fmt.Sprintf("array %v", array))
 	}
 
-	return JsonArray(array)
+	hasError = true
+	errorMsg = "Malformed Array"
+	return nil
 }
 
 func parseJsonPrimitive(scanner *BufferedScanner, primitive string) JsonValue {
-	ch := scanner.PeekUntil(getStrLast(primitive))
-	if string(ch.Get()) != primitive {
+	logLoop()
+	token := scanner.ScanUntilExcludeAll(COMMA, R_BRAC, R_CURLY)
+	token = trimSpace(token)
+
+	if string(token) != primitive {
 		hasError = true
-		errorMsg = "Unrecognized Symbol: " + string(ch.Get())
+		errorMsg = "Unrecognized Symbol: " + string(token)
 	}
 
-	return JsonValue(string(ch.Get()))
+	return JsonValue(string(token))
 }
 
 func parseJsonNumber(scanner *BufferedScanner) JsonValue {
-	buf := scanner.PeekUntilExclude(COMMA)
+	token := scanner.ScanUntilExcludeAll(COMMA, R_BRAC, R_CURLY)
+	logLoop()
 
-	num := string(buf.Get())
+	num := string(token)
 	if !isStrNumber(num) {
 		//FIXME add a error struct and methods
 		hasError = true
@@ -75,40 +129,35 @@ func parseJsonValue(scanner *BufferedScanner) JsonValue {
 		if hasError {
 			exitOnError(errors.New("Malformed Json File"), "malformed Json File")
 		}
+		logLoop()
 		offset += 1
-		Logger.Debug(fmt.Sprintf("kvscan %#U\n", ch))
 		if unicode.IsSpace(ch) {
 			continue
 		}
+		Logger.Debug(fmt.Sprintf("kvscan %#U", ch))
 		if COMMA == ch {
 			break
 		}
-		if QUOTE == ch {
-			scanner.buffer.Push(ch)
-			return parseJsonString(scanner)
-		}
+		scanner.Buffer(ch)
 		if L_CURLY == ch {
-			scanner.buffer.Push(ch)
 			return parseJsonObject(scanner)
 		}
 		if L_BRAC == ch {
-			scanner.buffer.Push(ch)
 			return parseJsonArray(scanner)
 		}
+		if QUOTE == ch {
+			return parseJsonString(scanner)
+		}
 		if 't' == ch {
-			scanner.buffer.Push(ch)
 			return parseJsonPrimitive(scanner, PRIM_TRUE)
 		}
 		if 'f' == ch {
-			scanner.buffer.Push(ch)
 			return parseJsonPrimitive(scanner, PRIM_FALSE)
 		}
 		if 'n' == ch {
-			scanner.buffer.Push(ch)
 			return parseJsonPrimitive(scanner, PRIM_NULL)
 		}
 		if unicode.IsDigit(ch) {
-			scanner.buffer.Push(ch)
 			return parseJsonNumber(scanner)
 		}
 	}
@@ -116,49 +165,47 @@ func parseJsonValue(scanner *BufferedScanner) JsonValue {
 	return nil
 }
 
-func parseJsonString(scanner *BufferedScanner) JsonString {
-	b := scanner.PeekUntil(QUOTE)
-	scanner.buffer.PopAll()
-
-	return JsonString(string(b.Get()))
-}
-
-func parseJsonObject(scanner *BufferedScanner) JsonObject {
-	store := make(JsonObject)
-	for {
-		ch, done := scanner.Scan()
-		if done {
-			break
-		}
-		if hasError {
-			exitOnError(errors.New("Malformed Json File"), "malformed Json File")
-		}
-		Logger.Debug(fmt.Sprintf("tscan %#U\n", ch))
-		if unicode.IsSpace(ch) {
-			if ch == '\n' {
-				//FIXME move to BufferedScanner Interface
-				offset = 0
-				line += 1
-			}
-			continue
-		}
-		if QUOTE == ch {
-			key := parseJsonString(scanner)
-			value := parseJsonValue(scanner)
-			if key == "" && value == nil {
-				break
-			}
-			store[key] = value
-		}
-		}
+func parseJsonKey(scanner *BufferedScanner) JsonString {
+	b := scanner.ScanUntilExclude(COLON)
+	//for formatting purpose
+	key := string(b[1 : len(b)-1])
+	if b[0] != QUOTE && b[len(b)-1] != QUOTE {
+		hasError = true
+		errorMsg = "Malformed key" + key
+	}
+	colon, done := scanner.Scan()
+	if done || COLON != colon {
+		hasError = true
+		errorMsg = "Missing token: ':'"
 	}
 
-	return store
+	return JsonString(key)
+}
+
+func parseJsonString(scanner *BufferedScanner) JsonString {
+	token := scanner.ScanUntilExcludeAll(COMMA, R_BRAC, R_CURLY)
+
+	token = trimSpace(token)
+	//for formatting purpose
+	key := string(token[1 : len(token)-1])
+	fmt.Printf("parse json string %s\n", string(token))
+	if token[0] != QUOTE && token[len(token)-1] != QUOTE {
+		hasError = true
+		errorMsg = "Malformed key" + key
+	}
+	delim := scanner.Peek()
+	if !slices.Contains([]rune{COMMA, R_BRAC, R_CURLY}, delim) {
+		hasError = true
+		errorMsg = "Missing token ',', ']' or '}'"
+	}
+
+	return JsonString(key)
 }
 
 func ParseJson(file *os.File) (JsonValue, error) {
 	scanner := NewBufferedScanner(file)
-	ch := scanner.PeekOne()
+	Logger.Debug(fmt.Sprint("in parse json"))
+	ch := scanner.Peek()
 	switch ch {
 	case L_BRAC:
 		return parseJsonArray(scanner), nil

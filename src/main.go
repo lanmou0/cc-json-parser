@@ -21,5 +21,8 @@ func main() {
 	defer file.Close()
 
 	output, err := ParseJson(file)
-	fmt.Printf("output: %v %s", output, err.Error())
+	if err != nil {
+		fmt.Printf("error parsing file: %s", err.Error())
+	}
+	dump(output)
 }
