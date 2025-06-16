@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"slices"
+	"unicode"
 	"unicode/utf8"
 )
 
@@ -51,6 +52,22 @@ func (bs *BufferedScanner) ScanUntil(r rune) []rune {
 	return rb
 }
 
+func (bs *BufferedScanner) ScanN(n int) []rune {
+	rb := make([]rune, 0)
+	for n > 0 {
+		ch, done := bs.Scan()
+		if done {
+			break
+		}
+		fmt.Printf("scan N %c\n", ch)
+
+		rb = append(rb, ch)
+		n -= 1
+	}
+
+	return rb
+}
+
 func (bs *BufferedScanner) ScanUntilExclude(r rune) []rune {
 	rb := make([]rune, 0)
 	for {
@@ -84,9 +101,37 @@ func (bs *BufferedScanner) ScanUntilExcludeAll(r ...rune) []rune {
 
 	return rb
 }
+
+func (bs *BufferedScanner) ScanNoSpace() rune {
+	var r rune
+	for {
+		ch, done := bs.Scan()
+		if done || !unicode.IsSpace(ch) {
+			r = ch
+			break
+		}
+	}
+
+	return r
+}
+
 func (bs *BufferedScanner) Buffer(r rune) {
 	bs.buffer = r
 	bs.hasPeek = true
+}
+
+func (bs *BufferedScanner) PeekNoSpace() rune {
+	var r rune
+	for {
+		ch, done := bs.Scan()
+		if done || !unicode.IsSpace(ch) {
+			bs.Buffer(ch)
+			r = ch
+			break
+		}
+	}
+
+	return r
 }
 
 func (bs *BufferedScanner) Peek() rune {

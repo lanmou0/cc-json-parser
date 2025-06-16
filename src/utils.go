@@ -3,6 +3,7 @@ package main
 import (
 	"encoding/json"
 	"fmt"
+	"os"
 	"strconv"
 	"strings"
 )
@@ -11,7 +12,7 @@ func exitOnError(err error, msg string) {
 	if err != nil {
 		Logger.Error(errorMsg)
 		Logger.Error(msg)
-		panic(err)
+		os.Exit(-1)
 	}
 }
 
