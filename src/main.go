@@ -5,7 +5,7 @@ import (
 	"os"
 )
 
-var Logger = NewLogger(true)
+var Logger = NewLogger(false)
 
 func main() {
 	args := os.Args[1:]

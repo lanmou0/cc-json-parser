@@ -152,7 +152,6 @@ func parseJsonValue(scanner *BufferedScanner) JsonValue {
 		}
 		Logger.Debug(fmt.Sprintf("kvscan %#U", ch))
 		scanner.Buffer(ch)
-		fmt.Printf("json value %c\n", ch)
 		if L_CURLY == ch {
 			return parseJsonObject(scanner)
 		}
@@ -210,7 +209,7 @@ func parseJsonString(scanner *BufferedScanner) JsonString {
 	token := scanner.ScanUntilExcludeAll(COMMA, R_BRAC, R_CURLY)
 	token = trimSpace(token)
 
-	fmt.Printf("parse json string %s\n", string(token))
+	Logger.Debug(fmt.Sprintf("parse json string %s\n", string(token)))
 	if token[0] != QUOTE && token[len(token)-1] != QUOTE {
 		hasError = true
 		errorMsg = "Malformed key" + string(token)
