@@ -19,7 +19,7 @@ func logLoop() {
 	loop += 1
 	Logger.Debug(fmt.Sprintf("in loop n: %d", loop))
 	if loop > 150 {
-		panic("too much looping")
+		panic("too much nesting")
 	}
 }
 
